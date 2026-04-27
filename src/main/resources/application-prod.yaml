@@ -1,0 +1,19 @@
+# Perfil activo en producción: spring.profiles.active=prod
+# Sobreescribe valores del application.yaml base
+
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate   # NUNCA update en producción
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+
+logging:
+  level:
+    root: WARN
+    com.comercial.crm: INFO
+    org.springframework.security: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
