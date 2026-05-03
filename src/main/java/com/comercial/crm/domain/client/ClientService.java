@@ -2,10 +2,7 @@ package com.comercial.crm.domain.client;
 
 import com.comercial.crm.domain.user.User;
 import com.comercial.crm.domain.user.UserRepository;
-import com.comercial.crm.web.dto.client.ClientRequest;
-import com.comercial.crm.web.dto.client.ClientResponse;
-import com.comercial.crm.web.dto.client.ClientStatusRequest;
-import com.comercial.crm.web.dto.client.ClientSummaryResponse;
+import com.comercial.crm.web.dto.client.*;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -15,6 +12,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -22,19 +21,25 @@ import java.util.UUID;
 @Transactional(readOnly = true)
 public class ClientService {
 
-  private final ClientRepository clientRepository;
-  private final UserRepository userRepository;
+  private final ClientRepository             clientRepository;
+  private final UserRepository               userRepository;
+  private final ClientStatusHistoryRepository historyRepository;
 
   // ------------------------------------------------------------------ READ
 
-  public Page<ClientSummaryResponse> search(String query, ClientCommercialStatus status, Pageable pageable) {
+  public Page<ClientSummaryResponse> search(String query, ClientCommercialStatus status, UUID ownerId, Pageable pageable) {
     String q = StringUtils.hasText(query) ? query.trim() : null;
-    return clientRepository.search(q, status, pageable)
-        .map(ClientSummaryResponse::from);
+    return clientRepository.search(q, status, ownerId, pageable).map(ClientSummaryResponse::from);
   }
 
   public ClientResponse findById(UUID id) {
     return ClientResponse.from(getOrThrow(id));
+  }
+
+  public List<StatusHistoryResponse> getStatusHistory(UUID clientId) {
+    getOrThrow(clientId);
+    return historyRepository.findByClientIdOrderByChangedAtAsc(clientId)
+        .stream().map(StatusHistoryResponse::from).toList();
   }
 
   // ----------------------------------------------------------------- CREATE
@@ -42,7 +47,6 @@ public class ClientService {
   @Transactional
   public ClientResponse create(ClientRequest req) {
     validateNitUniqueness(req.nit(), null);
-
     User owner = resolveOwner(req.ownerUserId());
 
     Client client = Client.builder()
@@ -52,13 +56,16 @@ public class ClientService {
         .mainPhone(req.mainPhone())
         .address(req.address())
         .city(req.city())
-        .commercialStatus(req.commercialStatus() != null
-            ? req.commercialStatus()
-            : ClientCommercialStatus.NEW)
+        .commercialStatus(req.commercialStatus() != null ? req.commercialStatus() : ClientCommercialStatus.NEW)
         .ownerUser(owner)
         .build();
 
-    return ClientResponse.from(clientRepository.save(client));
+    Client saved = clientRepository.save(client);
+
+    // Registrar estado inicial en historial
+    saveHistory(saved, null, saved.getCommercialStatus(), owner);
+
+    return ClientResponse.from(saved);
   }
 
   // ----------------------------------------------------------------- UPDATE
@@ -66,7 +73,6 @@ public class ClientService {
   @Transactional
   public ClientResponse update(UUID id, ClientRequest req) {
     Client client = getOrThrow(id);
-
     validateNitUniqueness(req.nit(), id);
 
     client.setBusinessName(req.businessName());
@@ -76,8 +82,10 @@ public class ClientService {
     client.setAddress(req.address());
     client.setCity(req.city());
 
-    if (req.commercialStatus() != null) {
+    if (req.commercialStatus() != null && req.commercialStatus() != client.getCommercialStatus()) {
+      ClientCommercialStatus oldStatus = client.getCommercialStatus();
       client.setCommercialStatus(req.commercialStatus());
+      saveHistory(client, oldStatus, req.commercialStatus(), currentUser());
     }
     if (req.ownerUserId() != null) {
       client.setOwnerUser(getUserOrThrow(req.ownerUserId()));
@@ -91,7 +99,13 @@ public class ClientService {
   @Transactional
   public ClientResponse updateStatus(UUID id, ClientStatusRequest req) {
     Client client = getOrThrow(id);
-    client.setCommercialStatus(req.status());
+    ClientCommercialStatus oldStatus = client.getCommercialStatus();
+
+    if (oldStatus != req.status()) {
+      client.setCommercialStatus(req.status());
+      saveHistory(client, oldStatus, req.status(), currentUser());
+    }
+
     return ClientResponse.from(clientRepository.save(client));
   }
 
@@ -99,8 +113,7 @@ public class ClientService {
 
   @Transactional
   public void delete(UUID id) {
-    Client client = getOrThrow(id);
-    clientRepository.delete(client);
+    clientRepository.delete(getOrThrow(id));
   }
 
   // ------------------------------------------------------------ PRIVATE helpers
@@ -115,16 +128,24 @@ public class ClientService {
         .orElseThrow(() -> new EntityNotFoundException("Usuario no encontrado: " + userId));
   }
 
-  /**
-   * Resolves the owner: if ownerUserId is provided, use that user;
-   * otherwise fall back to the currently authenticated user.
-   */
   private User resolveOwner(UUID ownerUserId) {
-    if (ownerUserId != null) {
-      return getUserOrThrow(ownerUserId);
-    }
-    String currentEmail = SecurityContextHolder.getContext().getAuthentication().getName();
-    return userRepository.findByEmail(currentEmail).orElse(null);
+    if (ownerUserId != null) return getUserOrThrow(ownerUserId);
+    return currentUser();
+  }
+
+  private User currentUser() {
+    String email = SecurityContextHolder.getContext().getAuthentication().getName();
+    return userRepository.findByEmail(email).orElse(null);
+  }
+
+  private void saveHistory(Client client, ClientCommercialStatus from, ClientCommercialStatus to, User changer) {
+    historyRepository.save(ClientStatusHistory.builder()
+        .client(client)
+        .fromStatus(from)
+        .toStatus(to)
+        .changedBy(changer)
+        .changedAt(OffsetDateTime.now())
+        .build());
   }
 
   private void validateNitUniqueness(String nit, UUID excludeId) {
@@ -132,8 +153,6 @@ public class ClientService {
     boolean duplicate = excludeId == null
         ? clientRepository.existsByNit(nit)
         : clientRepository.existsByNitAndIdNot(nit, excludeId);
-    if (duplicate) {
-      throw new IllegalArgumentException("Ya existe un cliente con el NIT: " + nit);
-    }
+    if (duplicate) throw new IllegalArgumentException("Ya existe un cliente con el NIT: " + nit);
   }
 }

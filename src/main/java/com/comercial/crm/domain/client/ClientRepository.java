@@ -16,21 +16,18 @@ public interface ClientRepository extends JpaRepository<Client, UUID> {
              OR LOWER(c.businessName) LIKE LOWER(CONCAT('%', CAST(:query AS string), '%'))
              OR LOWER(c.nit)          LIKE LOWER(CONCAT('%', CAST(:query AS string), '%')))
         AND (:status IS NULL OR c.commercialStatus = :status)
+        AND (:ownerId IS NULL OR c.ownerUser.id = :ownerId)
       """)
   Page<Client> search(
-      @Param("query") String query,
-      @Param("status") ClientCommercialStatus status,
+      @Param("query")   String query,
+      @Param("status")  ClientCommercialStatus status,
+      @Param("ownerId") UUID ownerId,
       Pageable pageable);
 
-  /** Clients owned by a specific user. */
   Page<Client> findByOwnerUserId(UUID ownerUserId, Pageable pageable);
 
-  /** Count by status — used by dashboard KPIs. */
   long countByCommercialStatus(ClientCommercialStatus status);
 
-  /**
-   * Count active clients (not WON or LOST).
-   */
   @Query("""
       SELECT COUNT(c) FROM Client c
       WHERE c.commercialStatus NOT IN (
@@ -40,9 +37,6 @@ public interface ClientRepository extends JpaRepository<Client, UUID> {
       """)
   long countActive();
 
-  /** Exists by NIT (useful for duplicate validation). */
   boolean existsByNit(String nit);
-
-  /** Exists by NIT excluding a given id (for update validation). */
   boolean existsByNitAndIdNot(String nit, UUID id);
 }
