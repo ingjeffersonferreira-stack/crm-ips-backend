@@ -1,5 +1,4 @@
 package com.comercial.crm.domain.push;
-
 import com.comercial.crm.domain.action.Action;
 import com.comercial.crm.domain.action.ActionRepository;
 import com.comercial.crm.domain.action.ActionStatus;
@@ -13,7 +12,6 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -38,7 +36,6 @@ public class PushService {
   @Value("${push.vapid.subject:mailto:admin@sainsa.com}")
   private String vapidSubject;
 
-  // ── Subscribe / Unsubscribe ────────────────────────────────────
   @Transactional
   public void subscribe(String endpoint, String p256dh, String auth) {
     String email = SecurityContextHolder.getContext().getAuthentication().getName();
@@ -57,14 +54,12 @@ public class PushService {
     subRepo.deleteByEndpoint(endpoint);
   }
 
-  // ── Scheduled: check overdue actions every 30 min ─────────────
   @Scheduled(fixedDelay = 1800000, initialDelay = 60000)
   @Transactional(readOnly = true)
   public void checkOverdueActions() {
     OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
     OffsetDateTime oneHourAgo = now.minusHours(1);
 
-    // Find actions that became overdue in the last 30 min (to avoid repeat spam)
     List<Action> overdue = actionRepo.findByStatusAndScheduledAtBetween(
         ActionStatus.PENDING, oneHourAgo, now);
 
