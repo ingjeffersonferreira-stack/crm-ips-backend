@@ -29,7 +29,11 @@ public interface ActionRepository extends JpaRepository<Action, UUID> {
   @Query("SELECT DISTINCT a.client.id FROM Action a WHERE a.status = 'PENDING'")
   List<UUID> findClientIdsWithPendingActions();
 
-  /** Para agenda personal — acciones pendientes del usuario autenticado */
+  /** Para agenda personal */
   List<Action> findByResponsibleUserIdAndStatusOrderByScheduledAtAsc(
       UUID responsibleUserId, ActionStatus status);
+
+  /** Para notificaciones push */
+  List<Action> findByStatusAndScheduledAtBetween(
+      ActionStatus status, OffsetDateTime from, OffsetDateTime to);
 }
