@@ -19,8 +19,8 @@ public interface ClientRepository extends JpaRepository<Client, UUID> {
         AND (:ownerId IS NULL OR c.ownerUser.id = :ownerId)
       """)
   Page<Client> search(
-      @Param("query")   String query,
-      @Param("status")  ClientCommercialStatus status,
+      @Param("query") String query,
+      @Param("status") ClientCommercialStatus status,
       @Param("ownerId") UUID ownerId,
       Pageable pageable);
 
@@ -29,8 +29,9 @@ public interface ClientRepository extends JpaRepository<Client, UUID> {
   long countByCommercialStatus(ClientCommercialStatus status);
 
   @Query("SELECT COUNT(c) FROM Client c WHERE c.commercialStatus NOT IN ('WON', 'LOST')")
-long countActive();
+  long countActive();
 
   boolean existsByNit(String nit);
+
   boolean existsByNitAndIdNot(String nit, UUID id);
 }
