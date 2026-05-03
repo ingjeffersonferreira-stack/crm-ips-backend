@@ -28,14 +28,8 @@ public interface ClientRepository extends JpaRepository<Client, UUID> {
 
   long countByCommercialStatus(ClientCommercialStatus status);
 
-  @Query("""
-      SELECT COUNT(c) FROM Client c
-      WHERE c.commercialStatus NOT IN (
-        com.comercial.crm.domain.client.ClientCommercialStatus.WON,
-        com.comercial.crm.domain.client.ClientCommercialStatus.LOST
-      )
-      """)
-  long countActive();
+  @Query("SELECT COUNT(c) FROM Client c WHERE c.commercialStatus NOT IN ('WON', 'LOST')")
+long countActive();
 
   boolean existsByNit(String nit);
   boolean existsByNitAndIdNot(String nit, UUID id);

@@ -109,14 +109,10 @@ public class ClientService {
     return ClientResponse.from(clientRepository.save(client));
   }
 
-  // ----------------------------------------------------------------- DELETE
-
   @Transactional
   public void delete(UUID id) {
     clientRepository.delete(getOrThrow(id));
   }
-
-  // ------------------------------------------------------------ PRIVATE helpers
 
   private Client getOrThrow(UUID id) {
     return clientRepository.findById(id)
